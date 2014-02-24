@@ -1,0 +1,1593 @@
+#define NEAR 25 //cm
+
+//Suntetagmenes keliwn
+int cell_x[] = {0,93,186,0,93,186,0,93,186};
+int cell_y[] = {2049,2049,2049,1366,1366,1366,683,683,683};
+
+//Trexon board
+int game[] = {0,0,0,0,0,0,0,0,0};
+
+int current_x=0,current_y=-3683,white=0,btn=0,symbol=1,op_symbol=2,cell=0;
+int data[9],child_array[10],first_op = 0,trick=1,max=0,min=0,move=0;
+int layer_1=0,layer_2[10],layer_3[73],layer_2_tree[10];
+int layer_1_nodes=0,layer_2_nodes=0,layer_3_nodes=0,layer_4_nodes=0;
+int best_cell=0,moves_left=0,lcd=0,id=0,child=0,move_x,move_y;
+
+bool found_symbol=false,scan=false,win = false;
+
+mutex moveMutex_x,moveMutex_y;
+
+//Domi komvwn dentrou
+struct node
+{
+        int id;
+        int parent;
+        int child0,child1,child2,child3,child4,child5,child6,child7,child8,child9;
+        int data0,data1,data2,data3,data4,data5,data6,data7,data8;
+        int layer;
+        int symbol;
+        int value;
+        int node_value;
+        int active;
+};
+
+//megistos arithmos = 401
+node nodes[401];
+
+
+/*-----------------------------------------------------------------------------
+                          Katevasma stulou
+-----------------------------------------------------------------------------*/
+void pen_down()
+{
+     OnFwd(OUT_A, 15);
+     Wait(250);
+     Float(OUT_A);
+}
+
+
+/*-----------------------------------------------------------------------------
+                          Anevasma stulou
+-----------------------------------------------------------------------------*/
+void pen_up()
+{
+     RotateMotor(OUT_A,20,-15);
+}
+
+
+/*-----------------------------------------------------------------------------
+                         Metakinisi oximatos
+-----------------------------------------------------------------------------*/
+
+
+task move_yf()
+{
+     RotateMotor(OUT_C,100,move_y);
+     Release(moveMutex_y);
+}
+
+task move_xf()
+{
+     RotateMotor(OUT_B,20,move_x);
+     Release(moveMutex_x);
+}
+
+void move_pen(int x, int y)
+{
+     Acquire(moveMutex_x);
+     Acquire(moveMutex_y);
+
+     move_x = x - current_x;
+     move_y = current_y - y;
+
+     current_x = x;
+     current_y = y;
+
+     start move_xf;
+     start move_yf;
+}
+
+
+/*-----------------------------------------------------------------------------
+                         Ais8itiras Fwteinotitas
+-----------------------------------------------------------------------------*/
+int light()
+{
+ Acquire(moveMutex_x);
+ Acquire(moveMutex_y);
+ Release(moveMutex_x);
+ Release(moveMutex_y);
+
+ int light,i=0,count=0,lines=0,temp=0,scan=0;
+
+ for(i=0;i<10;i++)
+ {
+  scan = Sensor(IN_1);
+ }
+ return scan;
+}
+
+
+/*-----------------------------------------------------------------------------
+                         Elenxos sumvolou
+-----------------------------------------------------------------------------*/
+void check_cell(int x, int y)
+{
+ int scan1=0;
+ int scan2=0;
+
+ scan = false;
+
+ move_pen(x+45, y-130-1576);
+ Acquire(moveMutex_x);
+ Acquire(moveMutex_y);
+ Release(moveMutex_x);
+ Release(moveMutex_y);
+
+ scan1 = light();
+
+ scan = true;
+ if(scan1 < white -2)
+ {
+          found_symbol = true;
+ }
+}
+
+/*-----------------------------------------------------------------------------
+                     Euresi kinisis antipalou
+-----------------------------------------------------------------------------*/
+int find_symbol()
+{
+ SetSensorLight(IN_1);
+ int i=0,temp;
+
+ for(i=0;i<5;i++)
+ white = Sensor(IN_1);
+
+ i=0;
+
+ while(!found_symbol)
+ {
+                     if(game[i]==0)
+                     {
+                                   found_symbol = false;
+                                   check_cell(cell_x[i], cell_y[i]);
+                                   Wait(500);
+                     }
+                     i++;
+
+                     if(i == 9 && !found_symbol)
+                     i=0;
+ }
+ return i-1;
+}
+
+/*-----------------------------------------------------------------------------
+                     Anixneusi grapsimatos antipalou
+-----------------------------------------------------------------------------*/
+int ultra1()
+{
+  int i=0,temp=0;
+  SetSensorLowspeed(IN_2);
+  ClearScreen();
+  TextOut(0,LCD_LINE1,"Play if you want");
+
+  for(i=0;i<5;i++)
+  {
+                  temp = SensorUS(IN_2);
+  }
+
+  for(i=0;i<50;i++)
+  {
+                   if(SensorUS(IN_2) < NEAR)
+                   {
+                                    first_op = 1;
+                                    return 2;
+                   }
+                   Wait(100);
+  }
+  return 1;
+}
+
+
+/*-----------------------------------------------------------------------------
+                     Anixneusi grapsimatos antipalou
+-----------------------------------------------------------------------------*/
+void ultra2()
+{
+  int temp=0,i=0;
+  SetSensorLowspeed(IN_2);
+  ClearScreen();
+
+  for(i=0;i<5;i++)
+  {
+                  temp = SensorUS(IN_2);
+  }
+
+  while(SensorUS(IN_2) > NEAR)
+  {
+                       TextOut(0,LCD_LINE1,"Waiting Player...");
+  }
+}
+
+
+/*-----------------------------------------------------------------------------
+                              Sxediasmos X
+-----------------------------------------------------------------------------*/
+task draw_x4()
+{
+ RotateMotor(OUT_C,100,330); //y-axis
+ pen_up(); //Stilos - OFF
+ RotateMotor(OUT_C,100,-330); //y-axis
+ //current_y = current_y - 330;
+}
+
+task draw_x3()
+{
+  pen_down(); //Stilos - ON
+  start draw_x4;
+  RotateMotor(OUT_B,20,-53); //x-axis
+}
+
+task draw_x2()
+{
+ RotateMotor(OUT_C,100,330); //y-axis
+ pen_up(); //Stilos - OFF
+ RotateMotor(OUT_C,100,-330); //y-axis
+ start draw_x3;
+}
+
+task draw_x1()
+{
+  pen_down(); //Stilos - ON
+  start draw_x2;
+  RotateMotor(OUT_B,20,53); //x-axis
+}
+
+
+/*-----------------------------------------------------------------------------
+                              Sxediasmos O
+-----------------------------------------------------------------------------*/
+void draw_o()
+{
+ pen_down(); //Stilos - ON
+ RotateMotor(OUT_B,20,53); //x-axis
+ pen_up();
+ pen_down();
+ RotateMotor(OUT_C,100,300); //y-axis
+ pen_up();
+ pen_down();
+ RotateMotor(OUT_B,20,-53); //x-axis
+ pen_up();
+ pen_down();
+ RotateMotor(OUT_C,100,-300); //y-axis
+ pen_up(); //Stilos - OFF
+}
+
+
+/*-----------------------------------------------------------------------------
+                    Sxediasmos X sto katallilo keli
+-----------------------------------------------------------------------------*/
+void draw_x_square(int x)
+{
+ move_pen(cell_x[x] + 20, cell_y[x] - 176);
+ Acquire(moveMutex_x);
+ Acquire(moveMutex_y);
+ Release(moveMutex_x);
+ Release(moveMutex_y);
+
+ start draw_x1;
+ Wait(6000);
+}
+
+
+/*-----------------------------------------------------------------------------
+                    Sxediasmos O sto katallilo keli
+-----------------------------------------------------------------------------*/
+void draw_o_square(int x)
+{
+ move_pen(cell_x[x] + 20, cell_y[x] - 176);
+ Acquire(moveMutex_x);
+ Acquire(moveMutex_y);
+ Release(moveMutex_x);
+ Release(moveMutex_y);
+
+ draw_o();
+}
+
+
+/*-----------------------------------------------------------------------------
+                        Sxediasmos trilizas
+-----------------------------------------------------------------------------*/
+void draw_board()
+{
+ move_pen(0,683);
+ Acquire(moveMutex_x);
+ Acquire(moveMutex_y);
+ Release(moveMutex_x);
+ Release(moveMutex_y);
+
+ pen_down(); //Stilos - ON
+ move_pen(279,683);
+ Acquire(moveMutex_x);
+ Acquire(moveMutex_y);
+ Release(moveMutex_x);
+ Release(moveMutex_y);
+
+ pen_up(); //Stilos - OFF
+
+ move_pen(279,1366);
+ Acquire(moveMutex_x);
+ Acquire(moveMutex_y);
+ Release(moveMutex_x);
+ Release(moveMutex_y);
+
+ pen_down(); //Stilos - ON
+ move_pen(0,1366);
+ Acquire(moveMutex_x);
+ Acquire(moveMutex_y);
+ Release(moveMutex_x);
+ Release(moveMutex_y);
+
+ pen_up(); //Stilos - OFF
+
+ move_pen(93,2049);
+ Acquire(moveMutex_x);
+ Acquire(moveMutex_y);
+ Release(moveMutex_x);
+ Release(moveMutex_y);
+
+ pen_down(); //Stilos - ON
+ move_pen(93,0);
+ Acquire(moveMutex_x);
+ Acquire(moveMutex_y);
+ Release(moveMutex_x);
+ Release(moveMutex_y);
+
+ pen_up(); //Stilos - OFF
+
+ move_pen(186,0);
+ Acquire(moveMutex_x);
+ Acquire(moveMutex_y);
+ Release(moveMutex_x);
+ Release(moveMutex_y);
+
+ pen_down(); //Stilos - ON
+ move_pen(186,2049);
+ Acquire(moveMutex_x);
+ Acquire(moveMutex_y);
+ Release(moveMutex_x);
+ Release(moveMutex_y);
+
+ pen_up(); //Stilos - OFF
+
+ move_pen(0,-3683);
+ Acquire(moveMutex_x);
+ Acquire(moveMutex_y);
+ Release(moveMutex_x);
+ Release(moveMutex_y);
+}
+
+
+/*-----------------------------------------------------------------------------
+                 Sxediasmos dentrwn stin o8oni LCD
+-----------------------------------------------------------------------------*/
+void draw_x_lcd(int x,int y)
+{
+ LineOut(x,y,x+2,y+2);
+ LineOut(x+2,y,x,y+2);
+}
+
+void draw_o_lcd(int x,int y)
+{
+ LineOut(x,y,x+2,y);
+ LineOut(x,y,x,y+2);
+ LineOut(x,y+2,x+2,y+2);
+ LineOut(x+2,y,x+2,y+2);
+}
+
+void draw_tree(int DX,int DY,int game[])
+{
+ LineOut(0+DX,5+DY,16+DX,5+DY);
+ LineOut(0+DX,11+DY,16+DX,11+DY);
+ LineOut(5+DX,0+DY,5+DX,16+DY);
+ LineOut(11+DX,0+DY,11+DX,16+DY);
+
+ if(game[0] == 1)
+ {
+    draw_x_lcd(1+DX,13+DY);
+ }
+ else if(game[0] == 2)
+ {
+    draw_o_lcd(1+DX,13+DY);
+ }
+
+ if(game[1] == 1)
+ {
+    draw_x_lcd(7+DX,13+DY);
+ }
+ else if(game[1] == 2)
+ {
+    draw_o_lcd(7+DX,13+DY);
+ }
+
+ if(game[2] == 1)
+ {
+    draw_x_lcd(13+DX,13+DY);
+ }
+ else if(game[2] == 2)
+ {
+    draw_o_lcd(13+DX,13+DY);
+ }
+
+ if(game[3] == 1)
+ {
+    draw_x_lcd(1+DX,7+DY);
+ }
+ else if(game[3] == 2)
+ {
+    draw_o_lcd(1+DX,7+DY);
+ }
+
+ if(game[4] == 1)
+ {
+    draw_x_lcd(7+DX,7+DY);
+ }
+ else if(game[4] == 2)
+ {
+    draw_o_lcd(7+DX,7+DY);
+ }
+
+ if(game[5] == 1)
+ {
+    draw_x_lcd(13+DX,7+DY);
+ }
+ else if(game[5] == 2)
+ {
+    draw_o_lcd(13+DX,7+DY);
+ }
+
+ if(game[6] == 1)
+ {
+    draw_x_lcd(1+DX,1+DY);
+ }
+ else if(game[6] == 2)
+ {
+    draw_o_lcd(1+DX,1+DY);
+ }
+
+ if(game[7] == 1)
+ {
+    draw_x_lcd(7+DX,1+DY);
+ }
+ else if(game[7] == 2)
+ {
+    draw_o_lcd(7+DX,1+DY);
+ }
+
+ if(game[8] == 1)
+ {
+    draw_x_lcd(13+DX,1+DY);
+ }
+  else if(game[8] == 2)
+ {
+    draw_o_lcd(13+DX,1+DY);
+ }
+}
+
+
+/*-----------------------------------------------------------------------------
+                    Episimansi trexousas kinisis stin LCD
+-----------------------------------------------------------------------------*/
+void highlight_tree()
+{
+ int x=0,y=0;
+
+ if(cell<=3)
+ {
+            y=0;
+
+            if(cell == 0)
+            x=1;
+            else if(cell == 1)
+            x=2;
+            else if(cell == 2)
+            x=3;
+            else if(cell == 3)
+            x=4;
+
+            LineOut(21+x*20, 64-y, 21+x*20, 40-y);
+            LineOut(1+x*20 , 40-y, 21+x*20, 40-y);
+            LineOut(1+x*20 , 64-y, 1+x*20 , 40-y);
+            LineOut(2+x*20 , 63-y, 21+x*20, 63-y);
+ }
+ else
+ {
+     y=1;
+
+     if(cell == 4)
+     x=0;
+     else if(cell == 5)
+     x=1;
+     else if(cell == 6)
+     x=2;
+     else if(cell == 7)
+     x=3;
+     else if(cell == 8)
+     x=4;
+
+     LineOut(18+x*20, 64-y*32, 18+x*20, 40-y*32);
+     LineOut(-2+x*20, 40-y*32, 18+x*20, 40-y*32);
+     LineOut(-2+x*20, 64-y*32, -2+x*20, 40-y*32);
+     LineOut(-1+x*20, 64-y*32, 18+x*20, 64-y*32);
+ }
+
+}
+
+/*-----------------------------------------------------------------------------
+                  Simeiwsi kaluteris stratigikis stin LCD
+-----------------------------------------------------------------------------*/
+void draw_number(int pos,int value)
+{
+  int x,int y;
+
+  if(pos <= 3)
+  {
+    x = 28 + pos*20;
+    y=40;
+  }
+  else
+  {
+    x = 5 + (pos-4)*20;
+    y = 8;
+  }
+
+  if(value == 1)
+  LineOut(5+x,1+y,5+x,5+y);
+
+  if(value == 2)
+  {
+    LineOut(1+x,5+y,5+x,5+y);
+    LineOut(5+x,3+y,5+x,5+y);
+    LineOut(1+x,3+y,5+x,3+y);
+    LineOut(1+x,1+y,1+x,3+y);
+    LineOut(1+x,1+y,5+x,1+y);
+  }
+
+  if(value == 3)
+  {
+    LineOut(1+x,1+y,5+x,1+y);
+    LineOut(1+x,3+y,5+x,3+y);
+    LineOut(1+x,5+y,5+x,5+y);
+    LineOut(5+x,1+y,5+x,5+y);
+  }
+
+  if(value == 4)
+  {
+    LineOut(5+x,1+y,5+x,5+y);
+    LineOut(1+x,3+y,1+x,5+y);
+    LineOut(1+x,3+y,5+x,3+y);
+  }
+
+  if(value == 5)
+  {
+    LineOut(1+x,5+y,5+x,5+y);
+    LineOut(1+x,3+y,1+x,5+y);
+    LineOut(1+x,3+y,5+x,3+y);
+    LineOut(5+x,1+y,5+x,3+y);
+    LineOut(1+x,1+y,5+x,1+y);
+  }
+
+  if(value == 6)
+  {
+    LineOut(1+x,1+y,1+x,5+y);
+    LineOut(1+x,1+y,5+x,1+y);
+    LineOut(1+x,3+y,5+x,3+y);
+    LineOut(5+x,1+y,5+x,3+y);
+  }
+
+  if(value == 7)
+  {
+    LineOut(5+x,1+y,5+x,5+y);
+    LineOut(1+x,5+y,5+x,5+y);
+  }
+
+  if(value == 8)
+  {
+    LineOut(1+x,1+y,1+x,5+y);
+    LineOut(1+x,1+y,5+x,1+y);
+    LineOut(1+x,3+y,5+x,3+y);
+    LineOut(5+x,1+y,5+x,5+y);
+    LineOut(1+x,5+y,5+x,5+y);
+  }
+
+  if(value == 9)
+  {
+    LineOut(1+x,5+y,5+x,5+y);
+    LineOut(1+x,3+y,1+x,5+y);
+    LineOut(1+x,3+y,5+x,3+y);
+    LineOut(5+x,1+y,5+x,5+y);
+  }
+}
+
+/*-----------------------------------------------------------------------------
+                    Simeiwsi kaluteris stratigikis stin LCD
+-----------------------------------------------------------------------------*/
+void draw_heuristic()
+{
+  int nodes_num = layer_2_nodes;
+  int i=0,h_count=0,max=-2000;
+
+  while(nodes_num != -1)
+  {
+                  max=-2000;
+
+                  for(i=0;i<=layer_2_nodes;i++)
+                  {
+                                               if(nodes[layer_2[i]].value > max)
+                                               {
+                                               max = nodes[layer_2[i]].value;
+                                               id = i;
+                                               }
+                  }
+  nodes[layer_2[id]].value = -2000;
+  h_count++;
+
+  if(trick == 0)
+  draw_number(id,h_count);
+
+  nodes_num--;
+  }
+}
+
+
+/*-----------------------------------------------------------------------------
+                        Euretiki Sunartisi
+-----------------------------------------------------------------------------*/
+int heuristic(int id)
+{
+    int total = 0,i = 0,temp;
+    int data[9],child[10];
+
+    data[0] = nodes[id].data0;
+    data[1] = nodes[id].data1;
+    data[2] = nodes[id].data2;
+    data[3] = nodes[id].data3;
+    data[4] = nodes[id].data4;
+    data[5] = nodes[id].data5;
+    data[6] = nodes[id].data6;
+    data[7] = nodes[id].data7;
+    data[8] = nodes[id].data8;
+
+	//niki
+    if(
+       data[0] == symbol && data[1] == symbol && data[2] == symbol ||
+       data[3] == symbol && data[4] == symbol && data[5] == symbol ||
+       data[6] == symbol && data[7] == symbol && data[8] == symbol ||
+       data[0] == symbol && data[3] == symbol && data[6] == symbol ||
+       data[1] == symbol && data[4] == symbol && data[7] == symbol ||
+       data[2] == symbol && data[5] == symbol && data[8] == symbol ||
+       data[0] == symbol && data[4] == symbol && data[8] == symbol ||
+       data[2] == symbol && data[4] == symbol && data[6] == symbol
+       )
+       total = total + 1000;
+
+
+	//niki antipalou
+    if(
+       data[0] == op_symbol && data[1] == op_symbol && data[2] == op_symbol ||
+       data[3] == op_symbol && data[4] == op_symbol && data[5] == op_symbol ||
+       data[6] == op_symbol && data[7] == op_symbol && data[8] == op_symbol ||
+       data[0] == op_symbol && data[3] == op_symbol && data[6] == op_symbol ||
+       data[1] == op_symbol && data[4] == op_symbol && data[7] == op_symbol ||
+       data[2] == op_symbol && data[5] == op_symbol && data[8] == op_symbol ||
+       data[0] == op_symbol && data[4] == op_symbol && data[8] == op_symbol ||
+       data[2] == op_symbol && data[4] == op_symbol && data[6] == op_symbol
+       )
+       total = total - 1000;
+
+
+    //me 2 sumvola
+    //grammes
+    if(
+       data[0] == symbol && data[1] == symbol && data[2] == 0 ||
+       data[0] == symbol && data[2] == symbol && data[1] == 0 ||
+       data[1] == symbol && data[2] == symbol && data[0] == 0
+       )
+       total = total + 100;
+    if(
+       data[3] == symbol && data[4] == symbol && data[5] == 0 ||
+       data[3] == symbol && data[5] == symbol && data[4] == 0 ||
+       data[4] == symbol && data[5] == symbol && data[3] == 0
+       )
+       total = total + 100;
+    if(
+       data[6] == symbol && data[7] == symbol && data[8] == 0 ||
+       data[6] == symbol && data[8] == symbol && data[7] == 0 ||
+       data[7] == symbol && data[8] == symbol && data[6] == 0
+       )
+       total = total + 100;
+
+    //stiles
+    if(
+       data[0] == symbol && data[3] == symbol && data[6] == 0 ||
+       data[0] == symbol && data[6] == symbol && data[3] == 0 ||
+       data[3] == symbol && data[6] == symbol && data[0] == 0
+       )
+       total = total + 100;
+
+    if(
+       data[1] == symbol && data[4] == symbol && data[7] == 0 ||
+       data[1] == symbol && data[7] == symbol && data[4] == 0 ||
+       data[4] == symbol && data[7] == symbol && data[1] == 0
+       )
+       total = total + 100;
+    if(
+       data[2] == symbol && data[5] == symbol && data[8] == 0 ||
+       data[2] == symbol && data[8] == symbol && data[5] == 0 ||
+       data[5] == symbol && data[8] == symbol && data[2] == 0
+       )
+       total = total + 100;
+
+    //diagwnioi
+    if(
+       data[0] == symbol && data[4] == symbol && data[8] == 0 ||
+       data[0] == symbol && data[8] == symbol && data[4] == 0 ||
+       data[4] == symbol && data[8] == symbol && data[0] == 0
+       )
+       total = total + 100;
+    if(
+       data[2] == symbol && data[4] == symbol && data[6] == 0 ||
+       data[2] == symbol && data[6] == symbol && data[4] == 0 ||
+       data[4] == symbol && data[6] == symbol && data[2] == 0
+       )
+       total = total + 100;
+
+    //antipalos
+    //me 2 sumvola
+    //grammes
+    if(
+       data[0] == op_symbol && data[1] == op_symbol && data[2] == 0 ||
+       data[0] == op_symbol && data[2] == op_symbol && data[1] == 0 ||
+       data[1] == op_symbol && data[2] == op_symbol && data[0] == 0
+       )
+       total = total - 100;
+    if(
+       data[3] == op_symbol && data[4] == op_symbol && data[5] == 0 ||
+       data[3] == op_symbol && data[5] == op_symbol && data[4] == 0 ||
+       data[4] == op_symbol && data[5] == op_symbol && data[3] == 0
+       )
+       total = total - 100;
+    if(
+       data[6] == op_symbol && data[7] == op_symbol && data[8] == 0 ||
+       data[6] == op_symbol && data[8] == op_symbol && data[7] == 0 ||
+       data[7] == op_symbol && data[8] == op_symbol && data[6] == 0
+       )
+       total = total - 100;
+    //stiles
+    if(
+       data[0] == op_symbol && data[3] == op_symbol && data[6] == 0 ||
+       data[0] == op_symbol && data[6] == op_symbol && data[3] == 0 ||
+       data[3] == op_symbol && data[6] == op_symbol && data[0] == 0
+       )
+       total = total - 100;
+    if(
+       data[1] == op_symbol && data[4] == op_symbol && data[7] == 0 ||
+       data[1] == op_symbol && data[7] == op_symbol && data[4] == 0 ||
+       data[4] == op_symbol && data[7] == op_symbol && data[1] == 0
+       )
+       total = total - 100;
+    if(
+       data[2] == op_symbol && data[5] == op_symbol && data[8] == 0 ||
+       data[2] == op_symbol && data[8] == op_symbol && data[5] == 0 ||
+       data[5] == op_symbol && data[8] == op_symbol && data[2] == 0
+       )
+       total = total - 100;
+    //diagwnioi
+    if(
+       data[0] == op_symbol && data[4] == op_symbol && data[8] == 0 ||
+       data[0] == op_symbol && data[8] == op_symbol && data[4] == 0 ||
+       data[4] == op_symbol && data[8] == op_symbol && data[0] == 0
+       )
+       total = total - 100;
+    if(
+       data[2] == op_symbol && data[4] == op_symbol && data[6] == 0 ||
+       data[2] == op_symbol && data[6] == op_symbol && data[4] == 0 ||
+       data[4] == op_symbol && data[6] == op_symbol && data[2] == 0
+       )
+       total = total - 100;
+
+
+    //me 1 sumvolo
+    //grammes
+    if(
+       data[0] == symbol && data[1] == 0 && data[2] == 0 ||
+       data[0] == 0 && data[2] == symbol && data[1] == 0 ||
+       data[1] == symbol && data[2] == 0 && data[0] == 0
+       )
+       total = total + 10;
+    if(
+       data[3] == symbol && data[4] == 0 && data[5] == 0 ||
+       data[3] == 0 && data[5] == symbol && data[4] == 0 ||
+       data[4] == symbol && data[5] == 0 && data[3] == 0
+       )
+       total = total + 10;
+    if(
+       data[6] == symbol && data[7] == 0 && data[8] == 0 ||
+       data[6] == 0 && data[8] == symbol && data[7] == 0 ||
+       data[7] == symbol && data[8] == 0 && data[6] == 0
+       )
+       total = total + 10;
+    //stiles
+    if(
+       data[0] == symbol && data[3] == 0 && data[6] == 0 ||
+       data[0] == 0 && data[6] == symbol && data[3] == 0 ||
+       data[3] == symbol && data[6] == 0 && data[0] == 0
+       )
+       total = total + 10;
+    if(
+       data[1] == symbol && data[4] == 0 && data[7] == 0 ||
+       data[1] == 0 && data[7] == symbol && data[4] == 0 ||
+       data[4] == symbol && data[7] == 0 && data[1] == 0
+       )
+       total = total + 10;
+    if(
+       data[2] == symbol && data[5] == 0 && data[8] == 0 ||
+       data[2] == 0 && data[8] == symbol && data[5] == 0 ||
+       data[5] == symbol && data[8] == 0 && data[2] == 0
+       )
+       total = total + 10;
+    //diagwnioi
+    if(
+       data[0] == symbol && data[4] == 0 && data[8] == 0 ||
+       data[0] == 0 && data[8] == symbol && data[4] == 0 ||
+       data[4] == symbol && data[8] == 0 && data[0] == 0
+       )
+       total = total + 10;
+    if(
+       data[2] == symbol && data[4] == 0 && data[6] == 0 ||
+       data[2] == 0 && data[6] == symbol && data[4] == 0 ||
+       data[4] == symbol && data[6] == 0 && data[2] == 0
+       )
+       total = total + 10;
+
+    //antipalos
+	//me 1 sumvolo
+    //grammes
+    if(
+       data[0] == op_symbol && data[1] == 0 && data[2] == 0 ||
+       data[0] == 0 && data[2] == op_symbol && data[1] == 0 ||
+       data[1] == op_symbol && data[2] == 0 && data[0] == 0
+       )
+       total = total - 10;
+    if(
+       data[3] == op_symbol && data[4] == 0 && data[5] == 0 ||
+       data[3] == 0 && data[5] == op_symbol && data[4] == 0 ||
+       data[4] == op_symbol && data[5] == 0 && data[3] == 0
+       )
+       total = total - 10;
+    if(
+       data[6] == op_symbol && data[7] == 0 && data[8] == 0 ||
+       data[6] == 0 && data[8] == op_symbol && data[7] == 0 ||
+       data[7] == op_symbol && data[8] == 0 && data[6] == 0
+       )
+       total = total - 10;
+    //stiles
+    if(
+       data[0] == op_symbol && data[3] == 0 && data[6] == 0 ||
+       data[0] == 0 && data[6] == op_symbol && data[3] == 0 ||
+       data[3] == op_symbol && data[6] == 0 && data[0] == 0
+       )
+       total = total - 10;
+    if(
+       data[1] == op_symbol && data[4] == 0 && data[7] == 0 ||
+       data[1] == 0 && data[7] == op_symbol && data[4] == 0 ||
+       data[4] == op_symbol && data[7] == 0 && data[1] == 0
+       )
+       total = total - 10;
+    if(
+       data[2] == op_symbol && data[5] == 0 && data[8] == 0 ||
+       data[2] == 0 && data[8] == op_symbol && data[5] == 0 ||
+       data[5] == op_symbol && data[8] == 0 && data[2] == 0
+       )
+       total = total - 10;
+    //diagwnioi
+    if(
+       data[0] == op_symbol && data[4] == 0 && data[8] == 0 ||
+       data[0] == 0 && data[8] == op_symbol && data[4] == 0 ||
+       data[4] == op_symbol && data[8] == 0 && data[0] == 0
+       )
+       total = total - 10;
+    if(
+       data[2] == op_symbol && data[4] == 0 && data[6] == 0 ||
+       data[2] == 0 && data[6] == op_symbol && data[4] == 0 ||
+       data[4] == op_symbol && data[6] == 0 && data[2] == 0
+       )
+       total = total - 10;
+
+	  //kenes
+    if(
+       data[0] == 0 && data[1] == 0 && data[2] == 0 ||
+       data[3] == 0 && data[4] == 0 && data[5] == 0 ||
+       data[6] == 0 && data[7] == 0 && data[8] == 0 ||
+       data[0] == 0 && data[3] == 0 && data[6] == 0 ||
+       data[1] == 0 && data[4] == 0 && data[7] == 0 ||
+       data[2] == 0 && data[5] == 0 && data[8] == 0 ||
+       data[0] == 0 && data[4] == 0 && data[8] == 0 ||
+       data[2] == 0 && data[4] == 0 && data[6] == 0
+       )
+       total = total + 1;
+
+	return total;
+}
+
+
+/*-----------------------------------------------------------------------------
+               Euresi veltistis kinisis (algorithmos Minimax)
+-----------------------------------------------------------------------------*/
+int best_move()
+{
+  int c_node=0;
+  int child=0;
+  int i=0;
+  int id=0;
+  int move=0;
+
+  best_cell = -1;
+
+
+
+  layer_2_nodes--;
+  layer_3_nodes--;
+  layer_4_nodes--;
+
+  max=-1000;
+
+
+	if(best_cell == -1)
+	{
+	 if(moves_left >= 3)
+	 {
+     //layer 4 max
+     for(c_node=0;c_node<layer_3_nodes;c_node++)
+      {
+		  child_array[0] = nodes[layer_3[c_node]].child0;
+		  child_array[1] = nodes[layer_3[c_node]].child1;
+		  child_array[2] = nodes[layer_3[c_node]].child2;
+		  child_array[3] = nodes[layer_3[c_node]].child3;
+		  child_array[4] = nodes[layer_3[c_node]].child4;
+		  child_array[5] = nodes[layer_3[c_node]].child5;
+		  child_array[6] = nodes[layer_3[c_node]].child6;
+		  child_array[7] = nodes[layer_3[c_node]].child7;
+		  child_array[8] = nodes[layer_3[c_node]].child8;
+		  child_array[9] = nodes[layer_3[c_node]].child9;
+
+		  max=-1000;
+
+		  for(child=0;child<=9;child++)
+		  {
+			  if(nodes[child_array[child]].active == 1)
+			  {
+				  if(nodes[child_array[child]].value > max)
+				  {
+					  max = nodes[child_array[child]].value;
+                      id = nodes[child_array[child]].id;
+				  }
+              }
+			nodes[layer_3[c_node]].value = max;
+			nodes[layer_3[c_node]].node_value = id;
+
+	     }
+     }
+
+     //layer 3 min
+     min = 1000;
+     for(c_node=0;c_node<layer_2_nodes;c_node++)
+     {
+     child_array[0] = nodes[layer_2[c_node]].child0;
+     child_array[1] = nodes[layer_2[c_node]].child1;
+     child_array[2] = nodes[layer_2[c_node]].child2;
+     child_array[3] = nodes[layer_2[c_node]].child3;
+     child_array[4] = nodes[layer_2[c_node]].child4;
+     child_array[5] = nodes[layer_2[c_node]].child5;
+     child_array[6] = nodes[layer_2[c_node]].child6;
+     child_array[7] = nodes[layer_2[c_node]].child7;
+     child_array[8] = nodes[layer_2[c_node]].child8;
+     child_array[9] = nodes[layer_2[c_node]].child9;
+
+	 min = 1000;
+
+	 for(child=0;child<=9;child++)
+     {
+       if(nodes[child_array[child]].active == 1)
+        {
+         if(nodes[child_array[child]].value < min)
+          {
+            min = nodes[child_array[child]].value;
+            id = nodes[child_array[child]].id;
+          }
+        }
+       nodes[layer_2[c_node]].value = min;
+       nodes[layer_2[c_node]].node_value = id;
+     }
+     }
+	 }
+
+    child_array[0] = nodes[1].child0;
+    child_array[1] = nodes[1].child1;
+    child_array[2] = nodes[1].child2;
+    child_array[3] = nodes[1].child3;
+    child_array[4] = nodes[1].child4;
+    child_array[5] = nodes[1].child5;
+    child_array[6] = nodes[1].child6;
+    child_array[7] = nodes[1].child7;
+    child_array[8] = nodes[1].child8;
+    child_array[9] = nodes[1].child9;
+
+    //layer 2 max
+    max=-10;
+    for(child=0;child<=9;child++)
+    {
+     if(nodes[child_array[child]].active == 1)
+     {
+       if(nodes[child_array[child]].value > max)
+       {
+                    max = nodes[child_array[child]].value;
+                    id = child_array[child];
+       }
+     }
+     nodes[1].value = max;
+     nodes[1].node_value = id;
+    }
+
+    move = nodes[1].node_value;
+
+    data[0] = nodes[move].data0;
+    data[1] = nodes[move].data1;
+    data[2] = nodes[move].data2;
+    data[3] = nodes[move].data3;
+    data[4] = nodes[move].data4;
+    data[5] = nodes[move].data5;
+    data[6] = nodes[move].data6;
+    data[7] = nodes[move].data7;
+    data[8] = nodes[move].data8;
+
+    for(i=0;i<9;i++)
+    {
+            if(game[i] != data[i])
+            best_cell = i;
+
+    }
+
+  }
+  return best_cell;
+}
+
+
+/*-----------------------------------------------------------------------------
+                        Niki + kolpaki
+-----------------------------------------------------------------------------*/
+int win_and_trick()
+{
+  best_cell = -1;
+
+  data[0] = nodes[1].data0;
+  data[1] = nodes[1].data1;
+  data[2] = nodes[1].data2;
+  data[3] = nodes[1].data3;
+  data[4] = nodes[1].data4;
+  data[5] = nodes[1].data5;
+  data[6] = nodes[1].data6;
+  data[7] = nodes[1].data7;
+  data[8] = nodes[1].data8;
+
+  //me 2 sumvola
+  //grammes
+  if(data[0] == symbol && data[1] == symbol && data[2] == 0)
+	  best_cell = 2;
+  else if(data[0] == symbol && data[2] == symbol && data[1] == 0)
+	  best_cell = 1;
+  else if(data[1] == symbol && data[2] == symbol && data[0] == 0)
+		best_cell = 0;
+
+  else if(data[3] == symbol && data[4] == symbol && data[5] == 0)
+		best_cell = 5;
+  else if(data[3] == symbol && data[5] == symbol && data[4] == 0)
+		best_cell = 4;
+  else if(data[4] == symbol && data[5] == symbol && data[3] == 0)
+		best_cell = 3;
+
+  else if(data[6] == symbol && data[7] == symbol && data[8] == 0)
+		best_cell = 8;
+  else if(data[6] == symbol && data[8] == symbol && data[7] == 0)
+		best_cell = 7;
+  else if(data[7] == symbol && data[8] == symbol && data[6] == 0)
+		best_cell = 6;
+
+  //stiles
+  else if(data[0] == symbol && data[3] == symbol && data[6] == 0)
+		best_cell = 6;
+  else if(data[0] == symbol && data[6] == symbol && data[3] == 0)
+		best_cell = 3;
+  else if(data[3] == symbol && data[6] == symbol && data[0] == 0)
+		best_cell = 0;
+
+  else if(data[1] == symbol && data[4] == symbol && data[7] == 0)
+		best_cell = 7;
+  else if(data[1] == symbol && data[7] == symbol && data[4] == 0)
+		best_cell = 4;
+  else if(data[4] == symbol && data[7] == symbol && data[1] == 0)
+		best_cell = 1;
+
+  else if(data[2] == symbol && data[5] == symbol && data[8] == 0)
+		best_cell = 8;
+  else if(data[2] == symbol && data[8] == symbol && data[5] == 0)
+		best_cell = 5;
+  else if(data[5] == symbol && data[8] == symbol && data[2] == 0)
+		best_cell = 2;
+
+    //diagwnioi
+  else if(data[0] == symbol && data[4] == symbol && data[8] == 0)
+		best_cell = 8;
+  else if(data[0] == symbol && data[8] == symbol && data[4] == 0)
+		best_cell = 4;
+  else if(data[4] == symbol && data[8] == symbol && data[0] == 0)
+		best_cell =0;
+
+  else if(data[2] == symbol && data[4] == symbol && data[6] == 0)
+		best_cell = 6;
+  else if(data[2] == symbol && data[6] == symbol && data[4] == 0)
+		best_cell = 4;
+  else if(data[4] == symbol && data[6] == symbol && data[2] == 0)
+		best_cell = 2;
+
+  if(best_cell!=-1)
+  win = true;
+
+  //antipalos
+  //me 2 sumvola
+  //grammes
+  if(best_cell==-1)
+  {
+	  if(data[0] == op_symbol && data[1] == op_symbol && data[2] == 0)
+			best_cell = 2;
+		else if(data[0] == op_symbol && data[2] == op_symbol && data[1] == 0)
+			best_cell = 1;
+		else if(data[1] == op_symbol && data[2] == op_symbol && data[0] == 0)
+			best_cell = 0;
+
+		else if(data[3] == op_symbol && data[4] == op_symbol && data[5] == 0)
+			best_cell = 5;
+		else if(data[3] == op_symbol && data[5] == op_symbol && data[4] == 0)
+			best_cell = 4;
+		else if(data[4] == op_symbol && data[5] == op_symbol && data[3] == 0)
+			best_cell = 3;
+
+		else if(data[6] == op_symbol && data[7] == op_symbol && data[8] == 0)
+			best_cell = 8;
+		else if(data[6] == op_symbol && data[8] == op_symbol && data[7] == 0)
+			best_cell = 7;
+		else if(data[7] == op_symbol && data[8] == op_symbol && data[6] == 0)
+			best_cell = 6;
+
+		//stiles
+		else if(data[0] == op_symbol && data[3] == op_symbol && data[6] == 0)
+			best_cell = 6;
+		else if(data[0] == op_symbol && data[6] == op_symbol && data[3] == 0)
+			best_cell = 3;
+		else if(data[3] == op_symbol && data[6] == op_symbol && data[0] == 0)
+			best_cell = 0;
+
+		else if(data[1] == op_symbol && data[4] == op_symbol && data[7] == 0)
+			best_cell = 7;
+		else if(data[1] == op_symbol && data[7] == op_symbol && data[4] == 0)
+			best_cell = 4;
+		else if(data[4] == op_symbol && data[7] == op_symbol && data[1] == 0)
+			best_cell = 1;
+
+		else if(data[2] == op_symbol && data[5] == op_symbol && data[8] == 0)
+			best_cell = 8;
+		else if(data[2] == op_symbol && data[8] == op_symbol && data[5] == 0)
+			best_cell = 5;
+		else if(data[5] == op_symbol && data[8] == op_symbol && data[2] == 0)
+			best_cell = 2;
+
+		//diagwnioi
+		else if(data[0] == op_symbol && data[4] == op_symbol && data[8] == 0)
+			best_cell = 8;
+		else if(data[0] == op_symbol && data[8] == op_symbol && data[4] == 0)
+			best_cell = 4;
+		else if(data[4] == op_symbol && data[8] == op_symbol && data[0] == 0)
+			best_cell = 0;
+
+		else if(data[2] == op_symbol && data[4] == op_symbol && data[6] == 0)
+			best_cell = 6;
+		else if(data[2] == op_symbol && data[6] == op_symbol && data[4] == 0)
+			best_cell = 4;
+		else if(data[4] == op_symbol && data[6] == op_symbol && data[2] == 0)
+			best_cell = 2;
+	}
+
+  if(btn == 2)
+  {
+	//kolpaki
+  if(moves_left == 7)
+    {
+	   if(game[4] == symbol && game[0] == op_symbol)
+	   best_cell = 8;
+	   else if(game[4] == symbol && game[2] == op_symbol)
+	   best_cell = 6;
+	   else if(game[4] == symbol && game[6] == op_symbol)
+	   best_cell = 2;
+	   else if(game[4] == symbol && game[8] == op_symbol)
+	   best_cell = 0;
+    }
+  }
+
+  return best_cell;
+}
+
+
+/*-----------------------------------------------------------------------------
+                               MAIN
+-----------------------------------------------------------------------------*/
+task main()
+{
+
+ int i=0,j=0,k=0,p_data[9],temp_data[9],c_node=0,turns_num=9;
+ int child_num=0,child_total=0,tree_nodes=0,symbol_turn=0,op_move=0,turns=9;
+ int x_lcd=0,y_lcd=0;
+
+ TextOut(0,LCD_LINE1,"Choose algorithm:");
+ TextOut(0,LCD_LINE2,"Left->Minimax");
+ TextOut(0,LCD_LINE3,"Right->Minimax++");
+
+ //epilogi algorithmou
+ while(btn == 0)
+ {
+   if(ButtonPressed(BTNLEFT,false))
+   {
+     ClearScreen();
+     TextOut(0,LCD_LINE1,"Minimax");
+     btn=1;
+   }
+   else if(ButtonPressed(BTNRIGHT,false))
+   {
+     ClearScreen();
+     TextOut(0,LCD_LINE1,"Minimax++");
+     btn=2;
+   }
+ }
+
+ //sxediasmos trilizas
+ draw_board();
+
+ //pai3e an 8es prwtos (anixneusi)
+ symbol = ultra1();
+
+ ClearScreen();
+ TextOut(0,LCD_LINE1,"I play:");
+ NumOut(300,LCD_LINE1,symbol);
+ Wait(5000);
+
+ symbol_turn = 1;
+
+ //sumvolo robot
+ if(symbol == 1)
+ {
+      op_symbol = 2;
+      draw_x_square(4);
+      game[4] = 1;
+      symbol_turn = 2;
+      turns_num--;
+      move_pen(0,-3683);
+      Acquire(moveMutex_x);
+      Acquire(moveMutex_y);
+      Release(moveMutex_x);
+      Release(moveMutex_y);
+ }
+ else
+	    op_symbol = 1;
+
+
+//gia ka8e guro
+for(turns=0;turns<turns_num;turns++)
+{
+ if(win == false)
+ {
+ layer_4_nodes = 0;
+ layer_3_nodes = 0;
+ layer_2_nodes = 0;
+ child_total=0;
+
+ for(i=0;i<401;i++)
+ {
+                   nodes[i].active = 0;
+ }
+
+ if(symbol == symbol_turn)
+ {
+	 symbol_turn = op_symbol;
+
+ //tree creation
+ nodes[1].id = 1;
+ nodes[1].parent = 1;
+
+ nodes[1].data0 = game[0];
+ nodes[1].data1 = game[1];
+ nodes[1].data2 = game[2];
+ nodes[1].data3 = game[3];
+ nodes[1].data4 = game[4];
+ nodes[1].data5 = game[5];
+ nodes[1].data6 = game[6];
+ nodes[1].data7 = game[7];
+ nodes[1].data8 = game[8];
+
+
+ nodes[1].layer = 1;
+ nodes[1].symbol = op_symbol;
+ nodes[1].active = 1;
+
+ ClearScreen();
+ //current tree lcd
+ draw_tree(0,47,game);
+ LineOut(19,64,19,44);
+ LineOut(0,44,19,44);
+
+ x_lcd = 23;
+ y_lcd = 47;
+
+ moves_left=0;
+
+ for(i=0;i<9;i++)
+ {
+    data[i] = game[i];
+    temp_data[i] = game[i];
+
+	  if(game[i] == 0)
+		moves_left++;
+ }
+
+
+ tree_nodes = 1 + moves_left + moves_left*(moves_left-1);
+ trick = 1;
+ best_cell = win_and_trick();
+
+ if(best_cell == -1)
+ {
+  trick = 0;
+
+  //genitria katastasewn
+  for(c_node=1;c_node<tree_nodes;c_node++)
+  {
+    child_num = 0;
+
+    data[0] = nodes[c_node].data0;
+    data[1] = nodes[c_node].data1;
+    data[2] = nodes[c_node].data2;
+    data[3] = nodes[c_node].data3;
+    data[4] = nodes[c_node].data4;
+    data[5] = nodes[c_node].data5;
+    data[6] = nodes[c_node].data6;
+    data[7] = nodes[c_node].data7;
+    data[8] = nodes[c_node].data8;
+
+	  for(i=0;i<10;i++)
+	  {
+		   child_array[i]=0;
+	  }
+
+    for(i=0;i<9;i++)
+    {
+
+                    p_data[0] = nodes[nodes[c_node].parent].data0;
+                    p_data[1] = nodes[nodes[c_node].parent].data1;
+                    p_data[2] = nodes[nodes[c_node].parent].data2;
+                    p_data[3] = nodes[nodes[c_node].parent].data3;
+                    p_data[4] = nodes[nodes[c_node].parent].data4;
+                    p_data[5] = nodes[nodes[c_node].parent].data5;
+                    p_data[6] = nodes[nodes[c_node].parent].data6;
+                    p_data[7] = nodes[nodes[c_node].parent].data7;
+                    p_data[8] = nodes[nodes[c_node].parent].data8;
+
+                    data[0] = nodes[c_node].data0;
+                    data[1] = nodes[c_node].data1;
+                    data[2] = nodes[c_node].data2;
+                    data[3] = nodes[c_node].data3;
+                    data[4] = nodes[c_node].data4;
+                    data[5] = nodes[c_node].data5;
+                    data[6] = nodes[c_node].data6;
+                    data[7] = nodes[c_node].data7;
+                    data[8] = nodes[c_node].data8;
+
+                    if(data[i] == 0)
+                    {
+                         temp_data[i] = symbol;
+                         child_num++;
+
+                         nodes[c_node+child_num+child_total].id = c_node+child_num+child_total;
+
+                         nodes[c_node+child_num+child_total].parent = c_node;
+
+                         child_array[child_num] = c_node+child_num+child_total;
+
+                         if(nodes[nodes[c_node+child_num+child_total].parent].symbol == 2)
+                         {
+                         data[i] = 1;
+                         nodes[c_node+child_num+child_total].symbol = 1;
+                         }
+                         else if(nodes[nodes[c_node+child_num+child_total].parent].symbol == 1)
+                         {
+                              data[i] = 2;
+                              nodes[c_node+child_num+child_total].symbol = 2;
+                         }
+
+                         nodes[c_node+child_num+child_total].data0 = data[0];
+                         nodes[c_node+child_num+child_total].data1 = data[1];
+                         nodes[c_node+child_num+child_total].data2 = data[2];
+                         nodes[c_node+child_num+child_total].data3 = data[3];
+                         nodes[c_node+child_num+child_total].data4 = data[4];
+                         nodes[c_node+child_num+child_total].data5 = data[5];
+                         nodes[c_node+child_num+child_total].data6 = data[6];
+                         nodes[c_node+child_num+child_total].data7 = data[7];
+                         nodes[c_node+child_num+child_total].data8 = data[8];
+                         nodes[c_node+child_num+child_total].layer = nodes[c_node].layer + 1;
+
+
+                         if(nodes[c_node+child_num+child_total].layer == 2)
+                         {
+                                                                      layer_2[layer_2_nodes] = c_node+child_num+child_total;
+                                                                      layer_2_tree[layer_2_nodes] = i;
+                                                                      layer_2_nodes++;
+
+                                                                      if(layer_2_nodes==5)
+                                                                      {
+                                                                        x_lcd = 0;
+                                                                        y_lcd = 15;
+                                                                      }
+
+                                                                      draw_tree(x_lcd,y_lcd,data);
+                                                                      x_lcd = x_lcd + 20;
+
+
+                         }
+                         else if(nodes[c_node+child_num+child_total].layer == 3)
+                         {
+                                                                      layer_3[layer_3_nodes] = c_node+child_num+child_total;
+                                                                      layer_3_nodes++;
+
+                         }
+                         else if(nodes[c_node+child_num+child_total].layer == 4)
+                         {
+                                                                      layer_4_nodes++;
+                         }
+
+
+
+                         nodes[c_node+child_num+child_total].value = heuristic(c_node+child_num+child_total);
+
+
+                         nodes[c_node+child_num+child_total].active = 1;
+
+
+                    }
+
+                    nodes[c_node].child0 = child_array[0];
+                    nodes[c_node].child1 = child_array[1];
+                    nodes[c_node].child2 = child_array[2];
+                    nodes[c_node].child3 = child_array[3];
+                    nodes[c_node].child4 = child_array[4];
+                    nodes[c_node].child5 = child_array[5];
+                    nodes[c_node].child6 = child_array[6];
+                    nodes[c_node].child7 = child_array[7];
+                    nodes[c_node].child8 = child_array[8];
+                    nodes[c_node].child9 = child_array[9];
+
+    }
+    child_total = child_total + child_num-1;
+  }
+
+  //euresi veltistis kinisis (algorithmos Minimax)
+  best_cell = best_move();
+  }
+
+  game[best_cell] = symbol;
+
+  cell=0;
+
+  for(k=0;k<=layer_2_nodes;k++)
+  {
+      if(layer_2_tree[k]==best_cell)
+      cell = k;
+  }
+
+  //sxediasmos stin lcd ta dentra
+  draw_heuristic();
+
+  //episimansi trexousas kinisis
+  if(trick == 0)
+  highlight_tree();
+
+  //sxediasmos sumvolou
+  if(symbol == 1)
+            draw_x_square(best_cell);
+  else if(symbol == 2)
+       draw_o_square(best_cell);
+
+  move_pen(15,-3683);
+  Acquire(moveMutex_x);
+  Acquire(moveMutex_y);
+  Release(moveMutex_x);
+  Release(moveMutex_y);
+  }
+  else
+  {
+	  symbol_turn = symbol;
+
+    ClearScreen();
+    TextOut(0,LCD_LINE1,"Make your move.");
+
+    //waiting player
+    if(first_op == 0)
+    {
+                //ixitiki eidopoihsh pai3imatos
+                PlayFileEx("play.rso",7,FALSE);
+                ultra2();
+                Wait(5000);
+    }
+    else
+    first_op = 0;
+
+    found_symbol = false;
+
+    ClearScreen();
+    TextOut(0,LCD_LINE1,"Searching symbol...");
+
+    //euresi kinisis antipalou
+    op_move = find_symbol();
+
+    TextOut(0,LCD_LINE2,"Symbol square:");
+    NumOut(600,LCD_LINE2,op_move);
+
+	for(i=0;i<9;i++)
+    {
+            if(op_move == i)
+						game[i] = op_symbol;
+    }
+
+  }
+
+
+}
+//dior8wsi sfalmatos a3ona x
+current_x = current_x + 1;
+}
+
+   move_pen(15,-3683);
+   Acquire(moveMutex_x);
+   Acquire(moveMutex_y);
+   Release(moveMutex_x);
+   Release(moveMutex_y);
+
+  //ixitika minimata nikis kai isopalias
+  if(win == false)
+  {
+    ClearScreen();
+    TextOut(0,LCD_LINE1,"Tie");
+    PlayFileEx("Tie.rso",7,FALSE);
+  }
+  else
+  {
+    ClearScreen();
+    TextOut(0,LCD_LINE1,"Win");
+    PlayFileEx("Win.rso",7,FALSE);
+  }
+
+   Wait(10000);
+   move_pen(0,-3683);
+
+
+}
+
+
+
